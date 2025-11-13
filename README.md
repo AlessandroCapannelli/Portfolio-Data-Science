@@ -1,1 +1,2 @@
-This project presents the main theoretical concepts of ML methods and then shows a practical example of how they are used.
+In questa repository sono contenuti alcuni progetti, appunti e in generale informazioni relativi alla Data Science.
+GLi argomenti sono divisi in sottocartelle, al cui interno è sempre presente un ulteriore file readme con informazioni aggiuntive
