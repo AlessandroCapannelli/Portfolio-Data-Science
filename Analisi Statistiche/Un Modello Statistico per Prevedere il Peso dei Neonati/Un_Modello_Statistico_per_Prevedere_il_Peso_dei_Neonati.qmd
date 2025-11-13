@@ -1,0 +1,709 @@
+---
+title: "Un Modello Statistico per Prevedere il Peso dei Neonati"
+author: "Alessandro Capannelli"
+format: 
+  html:
+    self-contained: true
+editor: visual
+page-layout: full
+---
+
+```{r, fig.width=14, fig.height=10}
+#| label: load-packages
+#| include: false
+
+library(ggplot2)
+library(here)
+```
+
+Per questo studio medico si analizzano i dati raccolti da 3 ospedali, riguardanti 2500 neonati.
+
+In particolare si sono rilevate le seguenti variabili:
+
+-   età della madre
+
+-   numero di gravidanze sostenute
+
+-   Madre fumatrice (0=NO, SI=1)
+
+-   N° di settimane di gestazione
+
+-   peso in grammi del neonato
+
+-   Lunghezza in mm del neonato
+
+-   Diametro in mm del cranio del neonato
+
+-   Tipo di parto: Naturale o Cesareo
+
+-   Ospedale: 1, 2, 3
+
+-   Sesso del neonato: M o F
+
+Si vuole scoprire se è possibile prevedere il peso del neonato alla nascita date tutte le altre variabili.
+
+In particolare, si vuole studiare una relazione con le variabili della madre, per capire se queste hanno o meno un effetto significativo, come ad esempio l’effetto potenzialmente dannoso del fumo (nascite premature?). Si usano anche lunghezza e diametro del cranio del neonato perché si possono stimare già dalle ecografie, ma in generale potrebbero anche fungere da variabili di controllo).
+
+Puoi seguire i punti che ti scrivo io come traccia e svolgili uno alla volta, commentando ovviamente i risultati.
+
+## Svolgimento
+
+#### 1. Importa il dataset “neonati.csv” e controlla che sia stato letto correttamente dal software
+
+```{r}
+neonati <- read.csv(here("Dataset", "neonati.csv"), stringsAsFactors = T)
+neonati$Fumatrici <- factor(neonati$Fumatrici)
+attach(neonati)
+```
+
+Si imposta il valore *stringsAsFactors = T* in quanto alcune funzioni che andremo a utilizzare, come `lm()`, necessitano che le variabili testuali siano impostate come fattori. Per lo stesso motivo impostiamo a fattore la variabile *Fumatric*i.
+
+Il dataset è stato letto correttamente.
+
+#### 2. Descrivi il dataset, la sua composizione, il tipo di variabili e l’obbiettivo dello studio
+
+Il dataset possiede un totale di 10 colonne, in particolare:
+
+-   **Anni.madre**: variabile quantitativa continua su scala di rapporti
+
+-   **N.gravidanze**: variabile quantitativa discreta su scala di rapporti
+
+-   **Fumatrici**: variabile categoriale dicotomica (dove 0/1 indicano rispettivamente assenza/presenza della caratteristica "fumatrice")
+
+-   **Gestazione**: variabile quantitativa continua su scala di rapporti
+
+-   **Peso**: variabile quantitativa continua su scala di rapporti
+
+-   **Lunghezza**: variabile quantitativa continua su scala di rapporti
+
+-   **Cranio**: variabile quantitativa continua su scala di rapporti
+
+-   **Tipo.parto**: variabile categoriale dicotomica (dove "Ces" indica un parto cesareo, mentre "Nat" un parto naturale)
+
+-   **Ospedale**: variabile categoriale politomica (a 3 classi)
+
+-   **Sesso**: variabile categoriale dicotomica (dove M indica un neonato di sesso maschile, F di sesso femminile)
+
+L'obiettivo dello studio è quello di fare un'analisi di tipo predittivo sul peso dei neonati. In altre parole, vogliamo studiare se, in che modo e con quale intensità le altre variabili influenzino il peso del neonato, così da essere in grado di stimare quale sarà il peso approssimativo dei futuri neonati al variare di queste variabili (all'interno di un dato intervallo di valori).
+
+#### 3. Indaga le variabili effettuando una breve analisi descrittiva, utilizzando indici e strumenti grafici che conosci
+
+Partiamo analizzando le variabili qualitative - *Fumatrici*, *Tipo.parto*, *Ospedale*, *Sesso* - in particolare costruendo delle tabelle di frequenza, per avere un'idea della distribuzione di frequenza tra le varie modalità:
+
+```{r}
+summarytools::freq(Ospedale,report.nas = FALSE)
+summarytools::freq(Sesso, report.nas = FALSE) 
+summarytools::freq(Tipo.parto, report.nas = FALSE)
+summarytools::freq(Fumatrici, report.nas = FALSE)
+```
+
+Da queste tabelle notiamo che il numero di nascite nei tre ospedali hanno valori molto simili tra loro (quindi l'indice di Gini sarà molto vicino ad 1). Allo stesso modo, anche il sesso dei neonati è quasi identico (le femmine rappresentano infatti il 50.24% del campione).
+
+Ci sono differenze significative, come potevamo attenderci, nella frequenze delle modalità delle variabili *Tipo.parto* e *Fumatrici*: i parti cesarei rappresentano poco meno del 30% dei parti totali, mentre solo il 4% delle neo-mamme ha dichiarato di essere fumatrice.
+
+Procediamo poi con la creazione di due tabelle per vedere le frequenze congiunte delle seguenti due coppie di variabili:
+
+-   *Ospedale* e *Tipo.parto*: per capire se c'è una differenza evidente nel numero di parti cesarei avvenuti nei tre ospedali
+
+```{r}
+summarytools::ctable(Ospedale, Tipo.parto)
+```
+
+-   *Fumatrici* e *Tipo.parto*: per capire se è più probabile che chi fuma abbia avuto un parto cesareo (magari legato a un parto prematuro causato proprio dai danni del fumo)
+
+```{r}
+summarytools::ctable(Fumatrici, Tipo.parto)
+```
+
+In entrambi i casi, limitandoci al momento a unìanalisi "visiva", non sembrano esserci differenze significative (anzi, il numero di parti naturali sembra essere addirittura più alto per chi fuma, ma il campione relativo alle fumatrici è relativamente piccolo).
+
+Proseguiamo l'analisi descrittiva andando a descrivere le variabili quantitative. Anzitutto procediamo con la funzione `descr()`, che calcola tutti gli indici di posizione, variabilità e forma che ci interessano:
+
+```{r}
+summarytools::descr(neonati[, -c(3,8,9,10)])
+```
+
+Possiamo quindi notare che, per quanto riguarda i valori medi del nostro campione:
+
+-   l'età media delle neomamme è di poco oltre i 28 anni
+
+-   il numero medio di gravidanze avute è appena sotto l'1
+
+-   Il numero medio di mesi di gestazione è di 39 mesi
+
+-   Il peso medio del neonato è di circa 3,3 kg
+
+Ovviamente, per dare un contesto maggiore a questi dati sarebbe utiule confrontarli con quello di altri paesi "simili" nello stesso periodo, in modo da poter trarre conclusioni più specifiche relative a temi di enorme importanza quali il tasso di natalità di un paese e l'età media dei genitori (studi hanno dimostrato che determinate malattie genetiche dei figli sono più probabili all'aumentare dell'età dei genitori).
+
+In termini di variabilità, invece, andiamo a confrontare il coefficiente di variazione (CV) delle variabili, essendo quest'ultimo un indice relativo che non possiede un'unità di misura propria. La variabile con più alta variabilità risulta essere *N.gravidanze*, con un CV pari a 1.31.
+
+Infine, per quanrto concerne gli indici di forma, notiamo che:
+
+-   la curtosi è positiva per tutte le variabili in esame, quindi la distribuzione è leptocurtica, ovvero più alta rispetto alla Normale
+
+-   Quasi tutte le variabili hanno una distribuzione asimmetrica (valori negativi indicano una coda più lunga a sinistra e viceversa). In particolare, va sottolineato che anche la variabile *Peso* possiede un certo livello di asimmetria. Ciò è importante in quanto tale asimmetria si rifletterà, probabilmente, anche sui residui. Di conseguenza potrebbe non essere soddisfatto il vincolo di normalità dei residui, come richiesto invece dal modello di regressione lineare. Procediamo quindi con un test Shapiro-Wilk:
+
+    ```{r}
+    shapiro.test(Peso)
+    ```
+
+    Dal quale confermiamo, che è da rifiutare l'ipotesi nulla di normalità di distribuzione della variabile.
+
+    Anche a livello grafico il diagramma a barre sembra evidenziare una certa asimmetria:
+
+    ```{r}
+    hist(Peso, col = "lightblue", main = "Grafico a barre della variabile peso", xlab = "Peso del neonato alla nascita", ylab = "Frequenze assolute", freq = T)
+    ```
+
+#### 4. Saggia l’ipotesi che la media del peso e della lunghezza di questo campione di neonati siano significativamente uguali a quelle della popolazione
+
+Anzitutto identifichiamo il tipo di confronto tra medie che vogliamo verificare. Nel nostro caso, infatti, si tratta di un confronto tra la media di un campione e quella della popolazione, in cui la varianza della popolazione non è nota. Dobbiamo quindi utilizzare un test t-student con n-1 gradi di libertà.
+
+Inoltre si tratta di un test bidirezionale:
+
+##### $H~0~: \bar{x} - µ = 0$
+
+##### $H~1~: \bar{x} - µ \neq 0$
+
+A livello di formule, quindi, la statistica test da calcolare è la seguente:
+
+$$
+t-test\ =\ \frac{\bar{x}-\mu}{SE}\ con\ n-1\ gdl,\ \ SE\ =\ \frac{s}{\sqrt{n}}
+$$
+
+Nel nostro caso, poi, manca anche l'informazione relativa al peso medio e alla lunghezza media della popolazione, che ricaviamo effettuando una ricerca su internet, da cui risulta che il peso medio di un neonato si aggira intorno ai 3300 grammi, con una lunghezza di 500 millimetri:
+
+(<https://www.google.com/search?q=peso+e+lunghezza+medi+neonati&rlz=1C1VDKB_itIT1076IT1076&oq=peso+e+lu&gs_lcrp=EgZjaHJvbWUqBggAEEUYOzIGCAAQRRg7MgYIARBFGEAyDggCEEUYJxg7GIAEGIoFMgYIAxBFGDkyDAgEECMYJxiABBiKBTIHCAUQABiABDIHCAYQABiABDIGCAcQRRg80gEIMzk5MmowajeoAgCwAgA&sourceid=chrome&ie=UTF-8>)
+
+Procediamo al test per il peso (dove l'ipotesi nulla è che la differenza tra le due medie non sia significativamente diversa da zero):
+
+```{r}
+t.test(Peso,
+       mu = 3300,
+       conf.level = 0.95,
+       alternative = "two.sided")
+```
+
+Il p-value risultante è pari a 0.1296, maggiore rispetto al valore soglia 0.05: non rifiutiamo l'ipotesi nulla. In altre parole, la media del peso del campione non sembra essere significativamente diversa rispetto alla media della popolazione.
+
+Eseguiamo lo stesso test anche per la lunghezza del neonato:
+
+```{r}
+t.test(Lunghezza,
+       mu = 500,
+       conf.level = 0.95,
+       alternative = "two.sided")
+```
+
+In questo caso il p-value è estremamente piccolo, quindi rifiutiamo l'ipotesi nulla: la lunghezza media del neonato presente nel campione si discosta in modo significativo dalla lunghezza media del neonato della popolazione.
+
+#### 5. Per le stesse variabili, o per altre per le quali ha senso farlo, verifica differenze significative tra i due sessi
+
+Si tratta di un test tra due campioni indipendenti tra loro, per il quale si usa sempre il t-test. Affichè i risultati del test siano affidabili, è necessario che siano rispettate due assunzioni:
+
+1.  La variabile misurata deve essere distribuita normalmente in entrambi i gruppi (tecnicamente sarebbero i residui a dover essere distribuiti normalmente, ma per un test t di Student entrambi daranno lo stesso risultato).
+
+2.  Le varianze dei due gruppi devono essere approssimativamente uguali
+
+Partiamo dalla variabile *Peso*. Dividiamo in due il dataframe a seconda del sesso del neonato:
+
+```{r}
+neonati_M <- neonati[neonati$Sesso == 'M',]
+neonati_F <- neonati[neonati$Sesso == 'F',]
+```
+
+Anzitutto testiamo l'ipotesi di normalità dei gruppi tramite lo Shapiro-Wilk test. Inoltre accompagniamo il test con il corrispondente Q-Q plot:
+
+```{r}
+shapiro.test(neonati_M$Peso)
+shapiro.test(neonati_F$Peso)
+
+par(mfrow=c(1,2))
+car::qqPlot(neonati_M$Peso)
+car::qqPlot(neonati_F$Peso)
+```
+
+Per entrambi i gruppi il p-value restituito è estremamente basso, molto minore rispetto al valore soglia di 0.05, quindi rifiutiamo l'ipotesi che la variabile *Peso* segua una distribuzione normale.
+
+A livello grafico, inoltre, vediamo che i valori più bassi della variabile *Peso*, per entrambi i gruppi, sono al di fuori dell'intervallo di confidenza, confermando la non-normalità ottenuta tramite il test Shapiro-Wilk (addirittura per le neonate femmine anche i valori più alti della variabile *Peso* escono dalle bande di confidenza).
+
+Per completezza, eseguiamo anche il test sull'omogeneità delle varianze tramite il Levene’s test (preferibile all'F-test e al Bartlett's test, in quanto quest'ultimi richiedono che la variabile segua una distribuzione Normale):
+
+```{r}
+car::leveneTest(Peso ~ Sesso, data = neonati)
+```
+
+Dato che l'ipotesi di normalità è stata rifiutata per entrambi i gruppi, procediamo eseguendo un test non parametrico. In particolare, essendo un test a due campioni, utilizzeremo il test di Mann-Whitney (dove l'ipotesi nulla è che la differenza tra i valori dei due gruppi non sia statisticamente significativa):
+
+```{r}
+wilcox.test(Peso~Sesso, data = neonati)
+```
+
+Il p-value è molto basso, quindi rifiutiamo l'ipotesi nulla e concludiamo l'analisi relativa alla variabile *Peso* affermando che il peso dei neonati maschi rispetto a quello delle femmine sono significativamente diversi tra loro. Oltretutto tale risultato è coerente con il box-plot effettuato in precedenza.
+
+Passiamo ora alla variabile *Lunghezza*:
+
+```{r}
+shapiro.test(neonati_M$Lunghezza)
+shapiro.test(neonati_F$Lunghezza)
+
+par(mfrow=c(1,2))
+car::qqPlot(neonati_M$Lunghezza)
+car::qqPlot(neonati_F$Lunghezza)
+```
+
+Anche in questo caso il p-value è estremamente basso in entrambi i gruppi, quindi l'assunzione di normalità non è rispettata.
+
+Inoltre anche l'ipotesi di omogeneità delle varianze risulta non soddisfatta:
+
+```{r}
+car::leveneTest(Lunghezza ~ Sesso, data = neonati)
+```
+
+Il p-value è infatti pari a 0.001, quindi rifiutiamo l'ipotesi nulla del test di omogeneità delle varianze dei gruppi.
+
+Procediamo eseguendo sia il test di Welch sia quello di Mann-Whitney. In ogni caso, essendo entrambe le assunzioni violate, i risultati dei due test andranno valutati con cautela:
+
+```{r}
+wilcox.test(Lunghezza~Sesso, data = neonati)
+t.test(neonati_M$Lunghezza, neonati_F$Lunghezza, alternative = "two.sided")
+```
+
+Entrambi i test restituiscono un p-value molto piccolo, quindi si rifiuta l'ipotesi nulla di differenza non significativa nelle medie dei due gruppi.
+
+Infine, aiutandoci anche tramite il box-plot:
+
+```{r}
+ggplot(neonati)+
+  geom_boxplot(aes(x = Sesso,
+                   y = Lunghezza
+  ),
+  outlier.color = "red")+
+  theme(legend.position="bottom")
+```
+
+Confermiamo che anche per la variabile *Lunghezza* risulta esserci una differenza significativa a seconda che il neonato sia maschio o femmina.
+
+#### 6. Si vocifera che in alcuni ospedali si facciano più parti cesarei, sai verificare questa ipotesi?
+
+Si deve verificare se il numero medio dei parti cesarei nei tre diversi ospedali differescano tra loro in modo significativo.
+
+Si tratta di un test tra medie di tre diversi campioni. Quindi, piuttosto che fare dei test due a due tramite il test t di Student, optiamo per il metodo ANOVA (Analisi della Varianza).
+
+Per utilizzare tale metodo deve essere precedentemente verificato che i dati dei vari gruppi soddisfino:
+
+1.  L'ipotesi di normalità
+
+2.  L'ipotesi di omogeneità
+
+Partiamo l'analisi codificando la variabile *Tipo.parto* in 1/0 a seconda che il parto sia stato di tipo cesareo o naturale:
+
+```{r}
+neonati$Tipo.parto_dic <- ifelse(neonati$Tipo.parto == "Ces", 1, 0)
+```
+
+Per quanto riguarda l'ipotesi di normalità, in questo caso la variabile *Tipo.parto* è una variabile dicotomica, quindi per definizione seguirà una distribuzione Binomiale.
+
+Per quanto riguarda la varianza dei gruppi, essendo la variabile dicotomica, questa sarà sicuramente omogenea.
+
+Nonostante non sia rispettata l'ipotesi di normalità, procediamo comunque con un'analisi ANOVA:
+
+```{r}
+res.aov = aov(neonati$Tipo.parto_dic ~ Ospedale)
+summary.lm(res.aov)
+```
+
+I p-value sono tutti maggiori rispetto al livello di significatività dello 0.05, quindi possiamo concludere che non ci sono differenze significative nei tre ospedali in termini di parti cesarei/naturali.
+
+Per conferma procediamo con un ultimo test, il Tukey's Honest Significant Difference, che effettua un confronto delle medie per ogni coppia di
+
+```{r}
+TukeyHSD(res.aov, conf.level = 0.95)
+```
+
+Anche in questo caso i p-value (aggiustati in modo tale che il livello di significatività del test rimanga dello 0.05) sono molto elevati e quindi confermano la non significatività della differenza tra il numero di parti cesarei tra i tre ospedali.
+
+### Analisi multidimensionale:
+
+#### 1. Ricordati qual è l’obiettivo dello studio e indaga le relazioni a due a due, soprattutto con la variabile risposta
+
+La nostra variabile di risposta, Y, sarà il peso del neonato. Le altre variabili rappresentano le nostre variabili esplicative o indipendenti, X.
+
+Per prima cosa, usiamo la funzione `ggcorr()`, che ci permette di valutare il legame a due a due per le variabili continue:
+
+```{r}
+GGally::ggcorr(data = neonati[c(1, 2, 4, 5, 6, 7)], label = TRUE)
+```
+
+In particolare, risultano esserci delle forti correlazioni positive tra le variabili *Gestazione*, *Peso*, *Lunghezza* e *Cranio*. Inoltre, c'è anche una correlazione positiva di media intensità tra *Anni.Madre* e *N.gravidanze*. Entrambe le correlazioni sono coerenti con quanto ci aspettavamo.
+
+Aggiungiamo altre informazioni andando a utilizzare la funzione `ggpairs()`:
+
+```{r}
+GGally::ggpairs(data = neonati[c(1, 2, 4, 5, 6, 7)])
+```
+
+Da cui abbiamo una conferma visiva, grazie agli scatterplot, delle correlazioni positive sopracitate.
+
+Per valutare le relazione tra la variabile *Peso* e le variabili qualitative, invece, possiamo utilizzare il test Chi-Quadro χ^2^ di Pearson:
+
+```{r}
+chisq.test(table(Sesso, Peso))
+chisq.test(table(Fumatrici, Peso))
+chisq.test(table(Tipo.parto, Peso))
+chisq.test(table(Ospedale, Peso))
+```
+
+I risultati di questi test hanno restituito un solo p-value \< α (con α pari a 0.05). Quindi non rifiutiamo l'ipotesi nulla di non associazione significativa tra le due variabili, tranne che per l'associazione tra le variabili *Sesso* e *Peso*, in cui invece risulta esserci un'associazione statisticamente molto significativa.
+
+Da notare, però, che, se aumentassimo il valore di α da 0.05 a 0.10, anche la relazione tra *Peso* e *Fumatrici* diventerebbe statisticamente significativa.
+
+Ci interessa quindi anche valutare un'eventuale associazione tra *Fumatrici* e *Lunghezza*:
+
+```{r}
+chisq.test(table(Fumatrici, Lunghezza))
+```
+
+Anche in questo caso, se il livello di significatività di α fosse al 10%, l'associazione diventerebbe statisticamente significativa.
+
+#### 2. Crea un modello di regressione lineare multipla con tutte le variabili e commenta i coefficienti e il risultato ottenuto
+
+```{r}
+mod_completo <- lm(Peso ~ Anni.madre + N.gravidanze + Fumatrici + Gestazione + Lunghezza + Cranio + Tipo.parto + Ospedale + Sesso,
+           data = neonati)
+
+summary(mod_completo)
+
+```
+
+Partiamo dal fondo: i valori del R-squared e dell' Adjusted R-squadred sono entrambi simili e pari a 0.72. In sostanza, il modello completo è in grado di spiegare il 72% della variabilità del modello, mentre rimane una parte di variabilità residua pari al 28%. In linea generale, comunque, la varianza spiegata rappresenta una buona percentuale del totale.
+
+Andiamo quindi ad analizzare i singoli coefficienti:
+
+-   *β(Anni.madre)*: misura quanto di aumenta mediamente il peso (in grammi) di un neonato all'aumentare di 1 anno di età della madre, ceteris paribus. Teoricamente, quindi, il peso del neonato aumentarebbe in media di 0.89 grammi per ogni anno di età in più della madre.
+-   *β(N.gravidanze)*: misuradi quanto aumenta mediamente il peso (in grammi) di un neonato per ogni gravidanza in più avuta dalla madre.
+-   *β(Fumatrici1)*: misura l’effetto medio che ha sulla variabile *Peso* la modalità fumatrice rispetto alla modalità non fumatrice (baseline). Mediamente, quindi, essere una fumatrice rispetto a non essere una fumatrice comporta una diminuzione del peso del neonato di circa 30 grammi.
+-   *β(Gestazione)*: misuradi quanto aumenta mediamente il peso (in grammi) di un neonato per un mese in più di gestazione. Il coefficiente risulta molto significativo.
+-   *β(Lunghezza)*: misura di quanto aumenta mediamente il peso (in grammi) di un neonato per un mm in più di lunghezza del neonato.
+-   *β(Cranio)*: misura di quanto aumenta mediamente il peso (in grammi) di un neonato per un mm in più di diametro del cranio del neonato.
+-   *β(Tipo.parto1)*: misura l’effetto medio che ha sulla variabile *Peso* la modalità parto cesareo rispetto alla modalità parto naturale (baseline). In media effettuare un parto cesareo rispetto a un parto natuale riduce il peso di 29.5 grammi. Questa considerazione non ha alcun senso logico. Il parto cesareo è utilizzato anche per tutti quei casi in cui ci sono complicazioni ad avere un parto naturale, il che può essere legato proprio al peso del neonato.
+-   *β(Ospedaleosp2)*: misura l'effetto medio che ha sulla variabile *Peso* la modalità osp2 rispetto alla modalità osp1 (baseline).
+-   *β(Ospedaleosp3)*: misura l'effetto medio che ha sulla variabile *Peso* la modalità osp2 rispetto alla modalità osp1 (baseline).
+-   *β(SessoM)*: misura l'effetto medio che ha sulla variabile *Peso* la modalità "M" rispetto alla modalità "F".
+
+In linea generale, questo modello può essere probabilmente migliorato tramite una riduzione del numero di regressori.
+
+Come atteso, la variabile *Ospedale* non è significativa ed quindi la prima indiziata ad essere eliminata.
+
+Non risultano significativi nemmeno le variabili *Anni.madre* e *Fumatrici*. Per quest'ultima variabile, però, come visto in precedenza, sembra esserci qualche tipo di relazione con il *Peso*. Inoltre, esistono alcuni studi a riguardo che hanno dimostrato che effettivamente il fumo tende a ridurre il peso del neonato:(<https://cordis.europa.eu/article/id/34686-study-shows-mothers-who-smoke-impact-baby-weight-and-size/it#:~:text=Da%20tempo%20i%20ricercatori%20sostengono,meno%20e%20sono%20pi%C3%B9%20piccoli.>)
+
+#### 3. Cerca il modello “migliore”, utilizzando tutti i criteri di selezione che conosci e spiegali.
+
+Partendo dal modello contenente tutte le variabili, iniziamo la ricerca del modello più performante rimuovendo la variabile *Ospedale*, che risultava non significativa.
+
+Prima ancora, però, effettuiamo un test di verifica della normalità della variabile *Peso*, in quanto se non segue una distribuzione Normale, probabilmente anche i residui del modello non seguiranno una distribuzione Normale, violando così una delle assunzioni principali del modello lineare:
+
+```{r}
+shapiro.test(Peso)
+```
+
+Il p-value è molto basso, quindi dobbiamo costatare che la variabile non segue una distribuzione Normale.
+
+```{r}
+mod1 <- update(mod_completo, ~ .-Ospedale)
+summary(mod1)
+```
+
+La rimozione della variabile non ha sostanzialmente avuto effetti nè sulla significatività delle altre variabili indipendenti nè sul valore dell'R-quadro aggiustato.
+
+Procediamo quindi con un'ulteriore rimozione, questa volta è la variabile relativa agli anni della madre:
+
+```{r}
+mod2 <- update(mod1, ~ .-Anni.madre)
+summary(mod2)
+```
+
+Anche in questo caso coefficienti e R-quadro aggiustato non hanno subìto variazioni significative.
+
+Procediamo quindi con la rimozione anche dell'ultima variabile non significativa, *Fumatrici*:
+
+```{r}
+mod3 <- update(mod2, ~.-Fumatrici)
+summary(mod3)
+```
+
+E, ancora una volta, la perdita di informazione del modello legata alla rimozione di un regressore è trascurabile.
+
+Infine vediamo cosa accade nel rimuovere anche la variabile relativa alla modalità con cui è estato effettuato il parto, cesareo o naturale, che avrebbe comunque un p-value significativo per α = 0.05:
+
+```{r}
+mod4 <- update(mod3, ~.-Tipo.parto)
+summary(mod4)
+```
+
+In termini di varianza spiegata, la rimozione di *Tipo.parto* è giustificabile in quanto l'R-quadro passa dal valore di 0.0727 al valore di 0.7265.
+
+Il modello contenente le variabili indipendenti *N.gravidanze*, *Gestazione*, *Lunghezza*, *Cranio* e *Sesso* sembra quindi essere il miglior modello, anche in termini di trade-off tra varianza spiegata e numero di regressori.
+
+Per verificare ciò, sfruttiamo i criteri BIC e AIC per la scelta del modello:
+
+-   criterio BIC:
+
+```{r}
+BIC(mod_completo, mod1, mod2, mod3, mod4)
+```
+
+Il modello 4, secondo tale criterio, è il migliore.
+
+-   criterio AIC:
+
+```{r}
+AIC(mod_completo, mod1, mod2, mod3, mod4)
+```
+
+Secondo L'AIC il modello 3 risulta essere preferibile rispetto al modello 4.
+
+Andiamo quindi ad effettuare un test dell'Analisi della varianza (ANOVA) tra i due modelli, il test mette a confronto le varianze spiegate dei modelli indicandoci se la differenza è statisticamente significativa:
+
+```{r}
+anova(mod4, mod3)
+```
+
+Il p-value è minore del valore soglia 0.05, quindi rifiutiamo l'ipotesi nulla del test: la riduzione di varianza passando dal modello 4 al modello 3 è statisticamente significativa.
+
+Alla fine optiamo comunque per il modello 4 in quanto, a livello statistico, rimane il fatto che l'R quadro aggiustato non è variato molto, inoltre, a livello logico, non sussiste una vera e propria dipendenza tra la variabile *Peso* e la variabile *Tipo.parto*: la relazione tra le due variabili deve essere ricondotta al fatto che il parto cesareo è tendenzialmente programmato intorno alla 38-39esima settimana di gravidanza, mentre il parto naturale può, ovviamente, avvenire anche più tardi, quindi il neonato ha più tempo per aumentare di peso.\
+Infine, seguendo il criterio del "Rasoio di Occam", quando siamo indecisi dobbiamo preferire modelli più semplici.
+
+Avremmo potuto anche eseguire questi test tramite una funzione apposita, `stepAIC()`, che ci permette di scegliere sia la modalità con cui la funzione arriva a trovare il modello migliore (cioè se partire dal modello più semplice o dal modello con tutti i regressori e andare rispettivamente ad aggiungere/togliere regressori, oppure come nel nostro caso levando e aggiungendo regressori a seconda delle circostanze) sia il criterio di scelta (AIC/BIC, nel nostro caso il BIC):
+
+```{r}
+n <- nrow(neonati)
+stepwise.mod <- MASS::stepAIC(mod_completo, 
+                              direction = "both",
+                              k =log(n)) #k = 2 per il criterio AIC
+summary(stepwise.mod) 
+```
+
+Infine, valutiamo anche eventuali problematiche legate alla multicollinearità, cioè quando le variabili indipendenti sono tra loro fortemente correlate (l'incorrelazione delle variabili indipendenti rappresentano una delle assunzioni del modello lineare):
+
+```{r}
+car::vif(mod4)
+```
+
+I valori sono tutti minori di 5, quindi non abbiamo problemi da questo punto di vista.
+
+#### 4. Si potrebbero considerare interazioni o effetti non lineari?
+
+Dalle precedenti analisi degli scatterplot, che riportiamo di nuovo:
+
+```{r}
+plot(Lunghezza, Peso, pch = 20)
+plot(Cranio, Peso, pch = 20)
+```
+
+Potrebbe esserci una relazione quadratica della variabile *Lunghezza*. Proviamo quindi ad inserirla nel modello:
+
+```{r}
+mod5 <- update(mod4,~ .+I(Lunghezza^2))
+summary(mod5)
+```
+
+Il coefficiente della variabile *Lunghezza* al quadrato è statisticamente molto significativo. Inoltre il valore dell'R quadro aggiustato è aumentato.
+
+Rieffettuiamo i test AIC/BIC/ANOVA:
+
+```{r}
+BIC(mod_completo, mod1, mod2, mod3, mod4, mod5)
+AIC(mod_completo, mod1, mod2, mod3, mod4, mod5)
+anova(mod5, mod4)
+```
+
+Adesso sia il BIC che l'AIC sono concordi nella scelta del modello migliore, cioè quello con la presenza dell'effetto quadratico della variabile *Lunghezza*. Oltretutto il test ANOVA restituisce un p-value estremamente basso, sintomo che c'è una differenza statisticamente significativa tra le varianze dei due modelli.
+
+Per quanto riguarda le interazioni tra le variabili, dai grafici non ci sono evidenze a riguardo. Tuttavia proviamo ad aggiungere al modello 4 l'interazione tra *Gestazione* e *Cranio* per vedere cosa accade:
+
+```{r}
+mod6 <- update(mod4,~ .+Gestazione*Cranio)
+summary(mod6)
+```
+
+Il risultato finale è effettivamente un aumento della varianza spiegata dal modello, tuttavia questo aumento è minore rispetto al modello con l'effetto quadratico della variabile *Lunghezza*.
+
+#### 5. Effettua una diagnostica approfondita dei residui del modello e di potenziali valori influenti. Se ne trovi prova a verificare la loro effettiva influenza
+
+L'obiettivo principale dell'analisi residua è valutare la bontà del nostro modello di regressione lineare. Analizzando le caratteristiche dei residui, infatti, possiamo determinare se il modello ha catturato in modo adeguato la relazione tra le variabili dipendenti e indipendenti.
+
+In particolare, l'analisi dei residui si sostanzia nel determinare potenziali problemi legati alla normalità, all'eteroschedasticità e all'autocorrelazione dei residui, oltre che all'identificazione di valori influenti, ovvero valori estremi che possono avere un impatto signifciativo sui risultati del modello di regressione).
+
+Per prima cosa, partiamo con una serie di grafici volti a questo scopo:
+
+```{r}
+par(mfrow = c(2,2))
+plot(mod5)
+```
+
+Vediamo i risultati grafici in dettaglio:
+
+-   Residuals vs Fitted: i residui sembrano essere sparsi in maniera casuale intorno alla media di (ovvero non sembrerebbe esserci correlazione tra residui)
+
+-   Q-Q Residuals: i valori dei residui non seguono la bisettirce (no normalità dei residui)
+
+-   Scale-Location: la nuvola dei punti assume una forma quasi ovale, il che fa pensare che possa non essere rispettata l'ipotesi di omoschedasticità dei residui
+
+-   Residuals vs Leverage: è presente un valore influente, l'osservazione 1551, che ha una distanza di cook addirittura maggiore di 1
+
+Procediamo quindi nel verificare le sopracitate assunzioni alla base del modello di regressione lineare:
+
+1.  normalità dei residui:
+
+    ```{r}
+    shapiro.test(residuals(mod5))
+    ```
+
+il p-value riusltante dal test è molto basso: confermiamo quanto visto nel grafico e rifiutiamo l'ipotesi di normalità dei residui. La prima assunzione del modello lineare è quindi non soddisfatta.
+
+2.  omoschedasticità dei residui:
+
+    ```{r}
+    lmtest::bptest(mod5)
+    ```
+
+anche in questo caso il p-value è molto basso, quindi si rifiuta anche lìipotesi di omoschedasticità dei residui. La seconda assunzione del modello lineare non è stata soddisfataa.
+
+3.  incorrelazione dei residui:
+
+    ```{r}
+    lmtest::dwtest(mod5)
+    ```
+
+il p-value è pari a 0.09, superiore rispetto ai valori soglia di 0.05. Non rifiutiamo l'ipotesi di incorrelazione dei residui. La terza assunzione del modello è quindi soddisfatta
+
+4.  valori influenti - leverage:
+
+    ```{r}
+    lev <- hatvalues(mod5)
+    plot(lev)
+    p = sum(lev)
+    soglia = 2*p/n
+    abline(h=soglia, col=2)
+    lev[lev>soglia]
+    ```
+
+Sono cioè stati identificati ben 142 leverage.
+
+5.  valori influenti - outliers:
+
+    ```{r}
+    plot(rstudent(mod5))
+    abline(h = c(-2,2), col = 2)  
+    car::outlierTest(mod5)
+    ```
+
+Il test ha restituito 5 outliers.
+
+Per verificare se questi valori sono però effettivamente influenti, dobbiamo calcolare la distanza di cook per questi valori:
+
+```{{r}}
+cook <- cooks.distance(mod5)
+plot(cook)
+max(cook)
+```
+
+L'osservazione 1551 ha una distanza di cook calcolata di 1.36, molto superiore rispetto al secondo livello di allarme (pari a 1).
+
+Alla luce di tutto, decidiamo quindi di eliminare l'osservazione dal dataframe e valutare cosa cambia.
+
+Eseguiamo quindi il seguente codice:
+
+```{r}
+detach(neonati)
+neonati_no_outlier <- neonati[-1551,]
+neonati_no_outlier[1551,]
+
+n_no_outlier <- nrow(neonati_no_outlier)
+
+mod_no_outlier <- lm(Peso ~ N.gravidanze + Gestazione + Lunghezza + Cranio + Sesso + I(Lunghezza^2),
+           data = neonati_no_outlier)
+summary(mod_no_outlier)
+```
+
+```{r}
+par(mfrow = c(2,2))
+plot(mod_no_outlier)
+```
+
+```{r}
+shapiro.test(residuals(mod_no_outlier))
+
+lmtest::bptest(mod_no_outlier)
+
+lmtest::dwtest(mod_no_outlier)
+
+lev_no_outlier <- hatvalues(mod_no_outlier)
+par(mfrow=c(1,1))
+plot(lev_no_outlier)
+p_no_outlier = sum(lev_no_outlier)
+soglia_no_outlier = 2*p_no_outlier/n_no_outlier
+abline(h=soglia_no_outlier, col=2)
+lev_no_outlier[lev_no_outlier>soglia_no_outlier]
+
+plot(rstudent(mod_no_outlier))
+abline(h = c(-2,2), col = 2)  
+car::outlierTest(mod_no_outlier)
+
+cook_no_outlier <- cooks.distance(mod_no_outlier)
+plot(cook_no_outlier)
+max(cook_no_outlier)
+```
+
+Le considerazioni sono le seguenti:
+
+-   l'eliminazione dell'osservazione 1551 ha comportato un aumento notevole del p-value relativo al test sull'omoschedasticità dei residui, tuttavia non sufficiente a superare il valore di 0.05, quindi continuiamo a rifiutare l'ipotesi nulla di omoschedasticità.
+
+-   per le altre assunzioni del modello lineare non ci sono considerazioni rilevanti da fare.
+
+-   per quanto concerne i valori influenti, sono aumentati i leverage (da 142 a 148) e sono diminuiti gli outliers (da 5 a 4). Tuttavia, calcolando la distanza di cook non risultano esserci nuovi valori influenti.
+
+-   confrontando il valore dell'R quadro aggiustato per lo stesso modello con e senza il valore influente nel dataframe, possiamo notare che è aumentato da 0.7363 a 0.7413, quindi la rimozione del dato è giustificata.
+
+In soldoni, l'eliminazione dell'osservazione sembra essere stata corretta, giustificata dal fatto che ci sono stati una serie di miglioramenti nel modello.
+
+#### 6. Quanto ti sembra buono il modello per fare previsioni?
+
+Date le conclusioni del punto precedente (assunzioni violate sia per quanto riguarda l'omoschedasticità che per la distribuzione Normale dei residui), nonostante una buona percentuale di varianza spiegata (R-quadro aggiustato di oltre il 73%), i valori stimati del modello dovrebbero essere presi con cautela.
+
+L'eteroschedasticità dei residui implica infatti che la varianza dei residui differisce nell'intervallo di valori delle variabili indipendenti. In altre parole essa può portare a stime più o meno distorte. Mentre il fatto che i residui non seguano una distribuzione normale può causare problemi nell'interpretazione della significatività statistica dei parametri di regressione.
+
+In linea generale, sarebbe aupicabile l’utilizzo di modelli di regressione diversi, come i GLM, che sono in grado di cattuare in maniera più adeguata distribuzioni degli errori diverse da quella Normale.
+
+#### 7. Fai la tua migliore previsione per il peso di una neonata, considerato che la madre è alla terza gravidanza e partorirà alla 39esima settimana. Niente misure dall’ecografia.
+
+Creiamo un nuovo modello senza le variabili *Lunghezza* e *Cranio*:
+
+```{r}
+mod7 <- lm(Peso ~ + N.gravidanze + Gestazione + Sesso,
+           data = neonati)
+summary(mod7)
+```
+
+Di seguito la funzione `predict()` per fare la previsione:
+
+```{r}
+predict(mod7, newdata = data.frame(N.gravidanze=3, Gestazione = 39, Sesso = "F"))
+```
+
+Prevediamo quindi che il peso di una neonata avente questi parametri fissati sia di 3252.3 grammi.
+
+#### 8. Cerca di creare qualche rappresentazione grafica che aiuti a visualizzare il modello. .Se è il caso semplifica quest’ultimo!
+
+```{r}
+ggplot(neonati)+
+  geom_point(aes(x = Gestazione,
+                 y = Peso,
+                 col = Sesso), position = "jitter")+
+  geom_smooth(aes(x = Gestazione,
+                  y = Peso,
+                  col = Sesso), se = F, method = "lm")+
+  geom_smooth(aes(x = Gestazione,
+                  y = Peso), col = "black", se = F, method = "lm")
+```
