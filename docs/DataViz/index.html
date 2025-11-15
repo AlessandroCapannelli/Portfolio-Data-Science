@@ -3,26 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DataViz Dashboard</title>
+    <title>Global Climate Change</title>
 </head>
 <body>
-    <h1>Dashboard DataViz</h1>
+    <h1>Dashboard: Global Climate Change</h1>
 
-    <!-- Qui inserisci il codice embed che Tableau ti ha fornito -->
-    <div class='tableauPlaceholder' id='viz1763201004790' style='position: relative'>
+    <!-- CODICE EMBED TABLEAU -->
+    <div class='tableauPlaceholder' id='viz1763202523893' style='position: relative'>
         <noscript>
             <a href='#'>
-                <img alt='Dashboard DataViz' src='https://public.tableau.com/static/images/.../1_rss.png' style='border: none' />
+                <img alt='Dashboard Global Climate Change' src='https://public.tableau.com/static/images/5Y/5Y84SWXGH/1_rss.png' style='border: none' />
             </a>
         </noscript>
-        <object class='tableauViz'  style='display:none;'>
-            <!-- parametri generati da Tableau -->
+        <object class='tableauViz' style='display:none;'>
+            <param name='host_url' value='https%3A%2F%2Fpublic.tableau.com%2F' /> 
+            <param name='embed_code_version' value='3' /> 
+            <param name='path' value='shared/5Y84SWXGH' />
+            <param name='toolbar' value='yes' />
+            <param name='static_image' value='https://public.tableau.com/static/images/5Y/5Y84SWXGH/1.png' /> 
+            <param name='animate_transition' value='yes' />
+            <param name='display_static_image' value='yes' />
+            <param name='display_spinner' value='yes' />
+            <param name='display_overlay' value='yes' />
+            <param name='display_count' value='yes' />
+            <param name='language' value='it-IT' />
+            <param name='filter' value='publish=yes' />
+            <param name='filter' value='showOnboarding=true' />
         </object>
     </div>
     <script type='text/javascript'>
-        var divElement = document.getElementById('viz1763201004790');
+        var divElement = document.getElementById('viz1763202523893');
         var vizElement = divElement.getElementsByTagName('object')[0];
-        // script responsive generato da Tableau
+        if ( divElement.offsetWidth > 800 ) { 
+            vizElement.style.width='1709px';
+            vizElement.style.height='883px';
+        } else if ( divElement.offsetWidth > 500 ) { 
+            vizElement.style.width='1709px';
+            vizElement.style.height='883px';
+        } else { 
+            vizElement.style.width='100%';
+            vizElement.style.height='1277px';
+        }
         var scriptElement = document.createElement('script');
         scriptElement.src = 'https://public.tableau.com/javascripts/api/viz_v1.js';
         vizElement.parentNode.insertBefore(scriptElement, vizElement);
