@@ -1,0 +1,550 @@
+---
+title: "Mercato Immobiliare Texas"
+author: "Alessandro Capannelli"
+format: 
+  html:
+    self-contained: true
+editor: visual
+page-layout: full
+---
+
+```{r}
+#| label: load-packages
+#| include: false
+
+library(tidyverse)
+library(palmerpenguins)
+library(here)
+library(summarytools)
+library(moments)
+library(dplyr)
+library(ggplot2)
+```
+
+## Analisi del mercato immobiliare del Texas
+
+Importa il dataset “Real Estate Texas.csv”, contenente dei dati riguardanti le vendite di immobili in Texas. Le variabili del dataset sono:
+
+• **city**: città
+
+• **year**: anno di riferimento
+
+• **month**: mese di riferimento
+
+• **sales:** numero totale di vendite
+
+**• volume**: valore totale delle vendite in milioni di dollari
+
+• **median_price**: prezzo mediano di vendita in dollari
+
+• **listings**: numero totale di annunci attivi
+
+• **months_inventory**: quantità di tempo necessaria per vendere tutte le inserzioni correnti al ritmo attuale delle vendite, espresso in mesi.
+
+## Svolgimento
+
+#### 0. Definizione della struttura del progetto
+
+Per il progetto è stato creato un nuovo R Project, inoltre è stato utilizzato il pacchetto (here) per definire la struttura del progetto, in termini di directory e subdirectory. Tale scelta è motivata dalla necessità di creare dei progetto auto-contenuti, in modo da facilitarne l'utilizzo per gli altri programmatori: [**library(here)**](https://www.tidyverse.org/blog/2017/12/workflow-vs-script/)
+
+```{r}
+library(here)
+
+getwd()
+# setwd("C:/Users/aless/OneDrive/Desktop/Studio/Master Data Science/Statistica_Descrittiva/Analisi Esplorativa del Mercato Immobiliare del Texas")
+data <- read.csv(here("DataSet", "realestate_texas.csv"), sep = ",", fileEncoding = "Latin1")
+```
+
+#### 1. Definizione del tipo di variabili del dataset
+
+Per prima cosa, per valutare la tipologia di variabili presenti, sfrutto la funzione `View()` per avere una panoramica:
+
+```{r}
+View(data)
+```
+
+In seguito, separo le varie colonne presenti nel dataframe per velocizzare l'analisi:
+
+```{r}
+attach(data)
+```
+
+A questo punto possiamo definire il tipo di variabile:
+
+• **city**: variabile qualitativa nominale (le città non sono ordinabili)
+
+• **year**: variabile qualitativa ordinale
+
+• **month**: variabile qualitativa nominale (ciclica) codificata in numeri
+
+*(year e month sono variabili che permettono l’analisi di serie storiche, ovvero l’analisi di uno stesso fenomeno in istanti temporali diversi. L’analisi permette di catturare alcune componenti importanti quali i trend, i cicli e le stagionalità di un fenomeno)*
+
+• **sales**: variabile quantitativa discreta, su scala di rapporti (zero vendite vuol dire che non ho venduto nulla, quindi non è convenzionale)
+
+• **volume**: variabile quantitativa continua (anche se potrebbe essere trattata come discreta, in quanto il dollaro è diviso in 100 centesimi, ma non può, per sua natura, essere diviso ulteriormente), su scala di rapporti
+
+• **median_price**: variabile quantitativa continua, su scala di rapporti
+
+• **listings**: variabile quantitativa discreta, su scala di rapporti
+
+• **months_inventory**: variabile quantitativa continua, su scala di rapporti (in questo caso il tempo viene “quantificato”)
+
+#### 2. Calcolo degli indici di posizione, di variabilità e di forma (per le variabili per cui ha senso farlo) e creazione delle tabelle contenenti le distribuzioni di frequenza per le altre.
+
+Prima di fare valutazioni specifiche per singola variabile, procediamo con la funzione `summary()` per avere un quadro generale dei principali indici di posizione (non includendo le variabili *city*, *year* e *month*, in quanto per queste non ha senso calcolarli):
+
+```{r}
+summary(data[,-c(1,2,3)])
+```
+
+Analizzando velocemente i dati si può notare che la variabile *city* presenta 4 diverse modalità, ogni modalità inoltre presenta lo stesso numero di osservazioni. Inoltre ogni modalità presenta una singola osservazione,a frequenza mensile, per il periodo dal 2010 al 2014 (compreso).
+
+Ci possiamo aspettare quindi che le tabelle di frequenza per queste tre variabili siano completamente uniformi, ovvero con frequenze relative e assolute uguali fra le varie modalità. Per quanto concerne l’indice di Gini, inoltre, sarà pari a 1 per tutte e tre le variabili.
+
+-   **city**: costruisco la tabella di frequenza:
+
+```{r}
+freq_ass_city <- table(city)
+freq_rel_city <-  prop.table(freq_ass_city)
+(distr_freq_city <- cbind(freq_ass_city, freq_rel_city))
+```
+
+Per questa variabile, inoltre, procedo al calcolo dell'Indice di Gini, sebbene sappia già che sarà pari a 1:
+
+```{r}
+gini.index <- function(x){
+  ni=table(x)
+  fi=ni/length(x)
+  fi2= fi^2
+  J = length(table(x))
+  
+  gini = 1-sum(fi2)
+  gini.normalizzato = gini/((J-1)/J)
+  
+  return(gini.normalizzato)
+}
+
+gini.index(city)
+```
+
+-   **year** e **month:** come anticipato nel punto precedente, considerate le variabili singolarmente, le tabelle di distribuzione saranno sicuramente uniformi. Mi aspetto che anche la tabella di contingenza sia completamente uniforme, dato che sembra esserci un'unica osservazione per ogni mese dell’anno. Verifico comunque empiricamente che sia così:
+
+```{r}
+table(year, month)/sum(freq_ass_city)
+```
+
+Possiamo quindi confermare che è presente un’osservazione per ogni mese di ogni anno dal 2010 al 2014.
+
+Per le restanti variabili calcolo quindi i vari indici di posizione, variabilità e forma.
+
+Prima di calcolare manualmente i singoli indici, però, sfruttiamo la funzione `descr()`, presente nella library *summarytools,* e che riporta gli indici di posizione presenti anche nella funzione `summary()` più altri indici di variabilità e forma, sia per avere una visione complessiva di tutti gli indici che ci servono sia per confermare la validità dei calcoli "manuali" che stiamo per fare degli stessi indici:
+
+```{r}
+descr(data)
+```
+
+Inoltre, creo una funzione per il calcolo della moda:
+
+```{r}
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+```
+
+-   **sales**:
+
+    ```{r}
+    (media_sales <- mean(sales))
+    (mediana_sales <- median(sales))
+    (moda_sales <- max(sort(table(sales))))
+    (max_sales <- max(sales))
+    (min_sales <- min(sales))
+    (Q1_sales <- (sort(sales)[60]+sort(sales)[61])/2)
+    (Q3_sales <- (sort(sales)[180]+sort(sales)[181])/2)
+    (Std.Dev_sales <- sd(sales))
+    (Varianza_sales <- sd(sales)^2)
+    (IQR_sales <- IQR(sales))
+    (Coeff_variaz_sales <- sd(sales)/mean(sales)*100)
+    (Range_variazione <- max(sales)-min(sales))
+    ```
+
+Confrontando gli indici calcolati manualmente con quelli calcolati attraverso la funzione `descr()` vediamo che restituiscono esattamente gli stessi valori, sebbene con alcune considerazioni:
+
+1.  Coefficiente di variazione: nel calcolo manuale è moltiplicata per 100
+2.  Moda: `descr()` non riporta tale l’indice
+3.  Varianza: `descr()` non riporta l’indice (ma la sd è uguale)
+4.  La curtosi ha valore -0.31 nel calcolo manuale, -0.34 tramite `desc()`. La differenza è trascurabile.
+5.  La curtosi è negativa, quindi la distribuzione è **platicurtica** (curva più piatta rispetto alla Normale)
+6.  L’indice di Fisher è positivo, quindi siamo nel caso di una **distribuzione asimmetrica positiva**.
+
+-   **volume**:
+
+    ```{r}
+    media_volume <- mean(volume)
+    Std.Dev_volume <- sd(volume)
+    min_volume <- min(volume)
+    Q1_volume <- (sort(volume)[60]+sort(volume)[61])/2
+    mediana_volume <- median(volume)
+    Q3_volume <- (sort(volume)[180]+sort(volume)[181])/2
+    max_volume <- max(volume)
+    IQR_volume <- IQR(volume)
+    Coeff_variaz_volume <- sd(volume)/mean(volume)*100
+    Indice_Fisher <- skewness(volume)
+    Curtosi <- kurtosis(volume) -3
+    moda_volume <- Mode(volume)
+    Varianza_volume <- sd(volume)^2
+    Range_variazione <- max(volume)-min(volume)
+    ```
+
+Valgono le stesse considerazioni fatte per la variabile sales, ma in questo caso la curtosi è positiva, quindi la forma di distribuzione della variabile risulta più alta rispetto a una distribuzione normale.
+
+-   **median_price**:
+
+    ```{r}
+    media_median_price <- mean(median_price)
+    Std.Dev_median_price <- sd(median_price)
+    min_median_price <- min(median_price)
+    Q1_median_price <- (sort(median_price)[60]+sort(median_price)[61])/2
+    mediana_median_price <- median(median_price)
+    Q3_median_price <- (sort(median_price)[180]+sort(median_price)[181])/2
+    max_median_price <- max(median_price)
+    IQR_median_price <- IQR(median_price)
+    Coeff_variaz_median_price <- sd(median_price)/mean(median_price)*100
+    Indice_Fisher <- skewness(median_price)
+    Curtosi <- kurtosis(median_price) -3
+    moda_median_price <- Mode(median_price)
+    Varianza_median_price <- sd(median_price)^2
+    Range_variazione <- max(median_price)-min(median_price)
+    ```
+
+In questo caso sia la curtosi che l’indice di Fisher sono negativi, quindi la forma della distribuzione è più piatta rispetto alla normale Standard, mentre l’asimmetria negativa indica una coda più lunga a sinistra dell’asse centrale.
+
+-   **listings**:
+
+    ```{r}
+    media_listings <- mean(listings)
+    Std.Dev_listings <- sd(listings)
+    min_listings <- min(listings)
+    Q1_listings <- (sort(listings)[60]+sort(listings)[61])/2
+    mediana_listings <- median(listings)
+    Q3_listings <- (sort(listings)[180]+sort(listings)[181])/2
+    max_listings <- max(listings)
+    IQR_listings <- IQR(listings)
+    Coeff_variaz_listings <- sd(listings)/mean(listings)*100
+    Indice_Fisher <- skewness(listings)
+    Curtosi <- kurtosis(listings) -3
+    moda_listings <- Mode(listings)
+    Varianza_listings <- sd(listings)^2
+    Range_variazione <- max(listings)-min(listings)
+    ```
+
+In questo caso la curtosi è negativa e l’indice positivo: asimmetria positiva e forma della curva più piatta della Normale.
+
+-   **months_inventory**:
+
+    ```{r}
+    media_months_inventory <- mean(months_inventory)
+    Std.Dev_months_inventory <- sd(months_inventory)
+    min_months_inventory <- min(months_inventory)
+    Q1_months_inventory <- (sort(months_inventory)[60]+sort(months_inventory)[61])/2
+    mediana_months_inventory <- median(months_inventory)
+    Q3_months_inventory <- (sort(months_inventory)[180]+sort(months_inventory)[181])/2
+    max_months_inventory <- max(months_inventory)
+    IQR_months_inventory <- IQR(months_inventory)
+    Coeff_variaz_months_inventory <- sd(months_inventory)/mean(months_inventory)*100
+    Indice_Fisher <- skewness(months_inventory)
+    Curtosi <- kurtosis(months_inventory) -3
+    moda_months_inventory <- Mode(months_inventory)
+    Varianza_months_inventory <- sd(months_inventory)^2
+    Range_variazione <- max(months_inventory)-min(months_inventory)
+    ```
+
+Anche in questo caso la curtosi è negativa, mentre la distribuzione è quasi simmetrica.
+
+#### 3. Individuazione della variabile con maggiore variabilità e quella con maggiore asimmetria
+
+Per confrontare la variabilità tra più variabili è preferibile usare un indice di variabilità relativo, non dipendente dalla scala di grandezza e dall’unità di misura, quindi il coefficiente di variabilità è da preferire rispetto alla deviazione standard. Nel nostro caso, il coefficiente di variazione più alto è relativo alla variabile volume (0.54).
+
+Per calcolare l’asimmetria si valuta l’indice di Fisher. Il valore associato alla variabile volume risulta essere quello che più si discosta dal valore 0, che invece indica perfetta simmetria.
+
+#### 4. Divisione in classe dei una delle variabili quantitative, costruzione della relativa tabella delle frequenze e del grafico a barre. Infine calcolo dell'indice di Gini
+
+Divido la variabile volume in 8 classi e costruisco la distribuzione di frequenze:
+
+```{r}
+volume_cl <- cut(volume, breaks =seq(from = 5, to=85, by=10))
+
+n = length(volume_cl)
+ni <- table(volume_cl) #freq. assolute
+fi <- ni/n #freq. relative
+Ni <- cumsum(ni) #freq. assolute cumulate
+Fi <- Ni/n #freq. relative cumulate
+(distr_freq <- as.data.frame(cbind(ni,fi,Ni,Fi)))
+```
+
+Da cui costruisco il corrispondente grafico a barre:
+
+```{r}
+barplot(distr_freq$ni,
+        main = "Distribuzione delle classi di Volume",
+        xlab = "classi di volume delle vendite (in milioni di $)",
+        ylab = "frequenze assolute",
+        ylim = c(0,70),
+        col = "lightgreen",
+        names.arg = rownames(distr_freq))
+
+barplot(distr_freq$fi,
+        main = "Distribuzione delle classi di Volume",
+        xlab = "classi di volume delle vendite (in milioni di $)",
+        ylab = "frequenze relative",
+        col = "lightblue",
+        names.arg = rownames(distr_freq))
+```
+
+Infine, calcolo l’indice di eterogeneità di Gini. Per fare ciò, parto dalle frequenze relative:
+
+```{r}
+fi2 <- fi^2
+fi2
+sum(fi2)
+J = length(table(volume_cl))
+indice_gini = 1-sum(fi2) #0.8163
+indice_gini.normalizzato = indice_gini/((J-1)/J)
+```
+
+Il risultato è G’ = 0.932, quindi molto vicino ad 1, il che significa che le varie modalità (nel nostro caso classi) sono distribuite in maniera molto eterogenea (Equidistribuzione).
+
+#### 5. Individuazione dell'indine di Gini per la variabile city
+
+Come anticipato nel punto (1), essendo le frequenze assolute uguali per tutte le modalità, l’indice di Gini sarà pari a 1
+
+#### *6.* Qual è la probabilità che presa una riga a caso di questo dataset essa riporti la città “Beaumont”? E la probabilità che riporti il mese di luglio? E la probabilità che riporti il mese di dicembre 2012?
+
+Essendo conosciuto ogni esito della variabile in esame, per calcolare queste 3 probabilità è sufficiente calcolare il numero di esiti positivi rispetto al numero di esiti possibili. Quindi:
+
+-   60 x 240 = 0.25
+
+-   4 x 5/240 = 0.833
+
+-   4/240 = 0,0166
+
+#### 7. Creazione di una colonna con il prezzo medio
+
+Creo un nuovo vettore, chiamato mean_price, dato dalla divisione tra volume e sales. Affinché sia espresso in dollari moltiplico il risultato per 1.000.000:
+
+```{r}
+#| include: false
+mean_price <- volume/sales*1000000
+cbind(data, mean_price)
+```
+
+```{r}
+head(mean_price)
+```
+
+oppure:
+
+```{r}
+#| eval: false
+data %>% 
+  mutate(mean_price = volume/sales*1000000)
+```
+
+In questo modo ho aggiunto una nuova colonna al dataset originario:
+
+```{r}
+head(cbind(data, mean_price))
+```
+
+#### 8. Prova a creare un’altra colonna che dia un’idea di “efficacia” degli annunci di vendita. Riesci a fare qualche considerazione?
+
+Per valutare l’efficacia degli annunci, cerco di mettere in relazione il numero di annunci rispetto al numero totale delle vendite, per vedere se, all’aumentare del numero di annunci, aumenta anche il numero delle vendite.
+
+Calcolando la correlazione tra le due variabili, cor(sales, listings), posso già affermare che è così in quanto è presente una correlazione positiva significativa (0,62).
+
+Creo una nuova colonna, chiamata efficacy_listings, data dal rapporto tra il volume totale delle vendite e il numero di annunci attivi:
+
+```{r}
+data <- data %>% 
+  mutate(efficacy_listing = sales/listings)
+```
+
+In generale, andando a guardare i dati per la variabile sales ordinati, si può notare come il valore della variabile efficacy_listing sia generalmente più alto per valori alti della variabile listings e più basso per valori bassi della variabile listings.  Questo significa che, probabilmente, un maggior numero di annunci tende a far aumentare il valore totale delle vendite:
+
+![](images/clipboard-952251029.png){width="559"}
+
+![](images/clipboard-952251029.png){width="564"}
+
+#### 9. Prova a creare dei summary(), o semplicemente media e deviazione standard, di alcune variabili a tua scelta, condizionatamente alla città, agli anni e ai mesi.
+
+Creo 3 summary, una per city, una per month e una per year. All’interno di ogni summary vengono calcolati 3 indici (media, sd e curtosi) per le variabili volume e sales:
+
+```{r}
+summary_city <- data %>%
+  group_by(city) %>%
+  summarise(media_volume=mean(volume),
+            sd_volume=sd(volume),
+            curt_volume=kurtosis(volume)-3,
+            media_sales=mean(sales),
+            sd_sales=sd(sales),
+            curt_sales=kurtosis(sales)-3)
+```
+
+```{r}
+summary_year <- data %>%
+  group_by(year) %>%
+  summarise(media_volume=mean(volume),
+            sd_volume=sd(volume),
+            curt_volume=kurtosis(volume)-3,
+            media_sales=mean(sales),
+            sd_sales=sd(sales),
+            curt_sales=kurtosis(sales)-3)
+```
+
+```{r}
+summary_month <- data%>%
+  group_by(year) %>%
+  summarise(media_volume=mean(volume),
+            sd_volume=sd(volume),
+            curt_volume=kurtosis(volume)-3,
+            media_sales=mean(sales),
+            sd_sales=sd(sales),
+            curt_sales=kurtosis(sales)-3) 
+```
+
+Di seguito l’output per tutte e 3 le variabili:
+
+*Da qui in poi utilizza ggplot2 per creare grafici fantastici! Ma non fermarti alla semplice soluzione del quesito, prova un po’ a personalizzare i grafici utilizzando temi, colori e annotazioni, e aggiustando i vari elementi come le etichette, gli assi e la legenda.*
+
+***Consiglio**: Fai attenzione quando specifichi le variabili month e year tra le estetiche, potrebbe essere necessario considerarle come fattori.*
+
+#### 10. Utilizza i boxplot per confrontare la distribuzione del prezzo mediano delle case tra le varie città. Commenta il risultato.
+
+```{r}
+ggplot(data)+
+  geom_boxplot(aes(x = city,
+                   y = median_price,
+                   fill = city),
+               outlier.color = "red")+
+  theme(legend.position="bottom") 
+```
+
+Il prezzo mediano più alto è in corrispondenza di Bryan-College Station, il più basso è quello di Wichita Falls. Valutando l’ampiezza delle scatole stesse, inoltre, possiamo notare che le oscillazioni del prezzo mediano sono maggiori in Witchita Falls, rispetto alle altre città. Le oscillazioni sono più basse in Bryan-College Station e Beaumont.
+
+#### 11. Utilizza i boxplot o qualche variante per confrontare la distribuzione del valore totale delle vendite tra le varie città ma anche tra i vari anni. Qualche considerazione da fare?
+
+```{r}
+ggplot(data, aes(x=factor(city), y=volume, color = factor(year)))+
+geom_boxplot()+
+theme(legend.position = "bottom")
+```
+
+Da questo grafico si vede chiaramente che il valore totale delle vendite è aumentato ogni anno in tutte le città (tranne Wichita Falls) dove il valore è sostanzialmente stazionario.
+
+Inoltre si può valutare come i volumi di vendita più alti siano concentrati nelle città di Bryan-College Station e Tyler.
+
+Un modo alternativo per fare il confronto è tramite il boxplot e la funzione facet_wrap:
+
+```{r}
+ggplot(data, aes(x=factor(city), y=volume, color=factor(year)))+
+  	geom_boxplot()+
+  	theme(legend.position = "none")+
+  	facet_wrap(~year)
+```
+
+Da questi mini-boxplot, però, non siamo in grado di valutare le variazioni tra anni, ma solo le differenze in termini di volumi totali di vendita tra le varie città per ogni anno.
+
+#### 12. Usa un grafico a barre sovrapposte per confrontare il totale delle vendite nei vari mesi, sempre considerando le città. Prova a commentare ciò che viene fuori. Già che ci sei prova anche il grafico a barre normalizzato. Consiglio: Stai attento alla differenza tra geom_bar() e geom_col(). PRO LEVEL: cerca un modo intelligente per inserire ANCHE la variabile Year allo stesso blocco di codice, senza però creare accrocchi nel grafico
+
+```{r}
+ggplot(data) +
+  geom_col(aes(x = factor(month),
+               y = sales, 
+               fill = city),
+               position = "stack")+
+  labs(title = "Totale delle vendite nei vari mesi per ogni città",
+       x = "mesi",
+       y = "totale vendite(in milioni di $")+
+  theme_classic()+
+  theme(legend.position = "bottom")
+```
+
+Il grafico di mostra che le vendite, considerando tutte e 4 le città, si concentrano nei mesi centrali dell’anno (Maggio-Giugno-Luglio-Agosto). Mentre, per quanto riguarda le città di Tyler e Bryan-College Station, il loro peso relativo rispetto all’altezza delle barre è molto maggiore rispetto alle altre due città. In altre parole, la maggior parte del volume di vendite totali mensili è ricavata da queste due città.
+
+Per la costruzione del grafico a barre normalizzato è invece necessario andare a cambiare il parametro position, sostituendo il valore “stack” (per quello a barre sovrapposte, “dodge” per quello a barre affiancate) con “fill”:
+
+```{r}
+ggplot(data) +
+  geom_col(aes(x = factor(month),
+               y = sales, 
+               fill = city),
+           position = "fill")+
+  labs(title = "Totale delle vendite mensili per città",
+       x = "mesi",
+       y = "totale vendite(in milioni di $)")+
+  theme_classic()+
+  theme(legend.position = "bottom")
+```
+
+Ovviamente nel grafico a barre normalizzato andiamo a perdere l’informazione relativa alla stagionalità delle vendite fra i vari mesi, ma ci permette un confronto più chiaro circa l’importanza in termini di volumi di vendita tra le varie città (come detto in precedenza, Bryan-College Station e Tyler sono le due città più “redditizie”).
+
+Per considerare anche la variabile year, invece, uso la funzione `facet_wrap()`:
+
+```{r}
+ggplot(data) +
+  geom_col(aes(x = factor(month),
+               y = sales, 
+               fill = city),
+           position = "stack")+
+  labs(title = "Totale delle vendite mensili per città dal 2010 al 2014",
+       x = "mesi",
+       y = "totale vendite(in milioni di $)")+
+  theme_classic()+
+  theme(legend.position = "bottom")+
+  facet_wrap(~year, scales='free')
+```
+
+Rispetto ai grafici precedenti, possiamo anche fare valutazioni per i diversi anni: ad esempio, per quanto riguarda la stagionalità, in linea generale vediamo che nel 2010 i mesi più movimentati sono stati quelli di Aprile-Maggio-Giugno, quindi in anticipo rispetto all’andamento generale. Nel 2014, invece, guardando l’andamento generale, il volume totale delle vendite risulta essere leggermente in ritardo.
+
+Di seguito invece il grafico a barre sovrapposte normalizzato:
+
+```{r}
+ggplot(data) +
+  geom_col(aes(x = factor(month),
+               y = sales, 
+               fill = city),
+           position = "fill")+
+  labs(title = "Totale delle vendite mensili per città dal 2010 al 2014",
+       x = "mesi",
+       y = "totale vendite(in milioni di $)")+
+  theme_classic()+
+  theme(legend.position = "bottom")+
+  facet_wrap(~year, scales='free')
+```
+
+#### 13. Prova a creare un line chart di una variabile a tua scelta per fare confronti commentati fra città e periodi storici.
+
+Per prima cosa costruisco una colonna di tipo “date”, concatenando le variabili year e month del dataset e aggiungendo il giorno. Dopo di che, la aggiungo al dataframe originale:
+
+```{r}
+date <- as.Date(paste(year,"-", month, "-01", sep = ""))
+data <- cbind(data, date)
+ggplot(data, aes(x = date, y = volume, col = city)) +
+geom_line()+
+geom_point()+
+scale_x_date(date_minor_breaks = "1 month",
+             date_breaks = "1 years",
+             date_labels="%Y")+
+theme_minimal()+
+theme(legend.position = "bottom")+
+labs(title = "Serie storica del volume totale vendite (in mil $) per il periodo 2010-2014 per la variaible city",
+      x = "Periodo",
+      y = "totale vendite(in milioni di $)")
+```
+
+Guardando il grafico, si può notare la presenza di una componente stagionale che causa i picchi. Tale componente stagionale, però, non ha lo stesso peso in tutte le città. Il volume totale delle vendite nella città di Bryan-College Station, infatti, ha un picco molto alto nei mesi centrali dell’anno, ma si riduce notevolmente di più rispetto a quello della città di Tyler negli ultimi mesi dell’anno. Ciò significa che la stagionalità è molto più accentuata.
+
+In termini assoluti si conferma quanto visto negli altri grafici: Beaumont e Brayn-College Station risultato essere le due città più importanti in termini di volumi di vendite.
+
+Inoltre, è presente un trend crescente del volume totale delle vendite nelle città di Bryan-College Station e Tyler (ma anche per la città Beaumont, sebbene il trend sia meno marcato). I valori delle vendite per Wichita Falls, invece, rimangono stazionari al variare del tempo.
